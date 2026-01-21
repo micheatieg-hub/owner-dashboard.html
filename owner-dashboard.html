@@ -1,1 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner Dashboard — Novel App</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f4f4f7; margin:0; padding:20px; }
+.card { background: #fff; max-width:600px; margin:20px auto; padding:25px; border-radius:16px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+h2 { text-align:center; margin-bottom:16px; }
+button { background:#6200EE; color:#fff; border:none; padding:12px 20px; border-radius:12px; cursor:pointer; font-weight:bold; margin-top:12px; }
+button:hover { background:#4b1fa5; }
+input[type="number"] { width:100%; padding:12px; margin-top:12px; border-radius:12px; border:1px solid #ccc; font-size:1rem; }
+table { width:100%; border-collapse: collapse; margin-top:20px; }
+th, td { padding:10px; text-align:left; border-bottom:1px solid #ddd; }
+.status-pending { color: orange; }
+.status-approved { color: green; }
+.status-rejected { color: red; }
+</style>
+</head>
+<body>
 
+<div class="card">
+  <h2>Owner Dashboard</h2>
+
+  <p>Current Balance: $<span id="balance">0.00</span></p>
+
+  <input type="number" id="withdrawAmount" placeholder="Enter amount to withdraw">
+  <button onclick="requestWithdrawal()">Request Withdrawal</button>
+  <div id="status"></div>
+
+  <h3>Past Withdrawals</h3>
+  <table id="withdrawTable">
+    <thead>
+      <tr>
+        <th>Amount</th>
+        <th>Status</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/appwrite@9.0.1"></script>
+<script>
+const client = new Appwrite.Client()
+  .setEndpoint('https://fra.cloud.appwrite.io/v1')
+  .setProject('69702007003c1eaed6f4');
+
+const databases = new Appwrite.Databases(client);
+
+const DATABASE_ID = 'novelpulse_';
+const BALANCE_COLLECTION = 'owner_balance';
+const WITHDRAW_COLLECTION = 'owner_withdrawals';
+const OWNER_ID = 'owner_001';
+
+async function fetchBalance() {
+  try {
+    const res = await databases.listDocuments(DATABASE_ID, BALANCE_COLLECTION);
+    if(res.documents.length > 0){
+      document.getElementById('balance').innerText = res.documents[0].balance.toFixed(2);
+    } else {
+      document.getElementById('balance').innerText = '0.00';
+    }
+  } catch(err){
+    console.error('Error fetching balance:', err);
+  }
+}
+
+async function fetchWithdrawals() {
+  try {
+    const res = await databases.listDocuments(DATABASE_ID, WITHDRAW_COLLECTION, [
+      Appwrite.Query.equal('ownerId', OWNER_ID),
+      Appwrite.Query.orderDesc('createdAt')
+    ]);
+    const tbody = document.querySelector('#withdrawTable tbody');
+    tbody.innerHTML = '';
+    res.documents.forEach(doc => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>$${doc.amount}</td>
+        <td class="status-${doc.status}">${doc.status}</td>
+        <td>${new Date(doc.createdAt).toLocaleString()}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch(err){
+    console.error('Error fetching withdrawals:', err);
+  }
+}
+
+async function requestWithdrawal() {
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  const statusDiv = document.getElementById('status');
+
+  if(isNaN(amount) || amount <= 0){
+    statusDiv.innerText = 'Enter a valid amount';
+    return;
+  }
+
+  try {
+    await databases.createDocument(
+      DATABASE_ID,
+      WITHDRAW_COLLECTION,
+      Appwrite.ID.unique(),
+      {
+        ownerId: OWNER_ID,
+        amount: amount,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        withdrawId: Appwrite.ID.unique()
+      }
+    );
+    statusDiv.innerText = '✅ Withdrawal request sent';
+    document.getElementById('withdrawAmount').value = '';
+    fetchWithdrawals();
+  } catch(err){
+    console.error('Error creating withdrawal:', err);
+    statusDiv.innerText = '❌ Error sending withdrawal';
+  }
+}
+
+// Load balance and withdrawals on page load
+fetchBalance();
+fetchWithdrawals();
+</script>
+
+</body>
+</html>
